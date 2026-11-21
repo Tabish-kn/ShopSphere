@@ -235,6 +235,7 @@ erDiagram
 ## 5. REST API Documentation Catalog
 
 ### Authentication & Users
+
 - `POST /api/v1/auth/register`: Create a new customer account.
 - `POST /api/v1/auth/login`: Authenticate and receive an access token + rotated refresh token.
 - `POST /api/v1/auth/refresh`: Exchange a valid refresh token for a fresh token pair.
@@ -242,6 +243,7 @@ erDiagram
 - `GET /api/v1/users/me`: Retrieve current user profile.
 
 ### Product Catalog
+
 - `GET /api/v1/products`: Faceted search and pagination (`?query=...&categoryId=...&page=0&size=10`).
 - `GET /api/v1/products/{id}`: Product details (cached in Redis).
 - `POST /api/v1/products`: Create a new product (`ADMIN` only).
@@ -249,10 +251,12 @@ erDiagram
 - `DELETE /api/v1/products/{id}`: Soft-delete/deactivate product (`ADMIN` only).
 
 ### Inventory Management
+
 - `GET /api/v1/inventory/{productId}`: Check real-time stock balance.
 - `PUT /api/v1/inventory/{productId}`: Update available stock (`ADMIN` only).
 
 ### Shopping Cart (Redis Backed)
+
 - `GET /api/v1/cart`: View current user's shopping cart.
 - `POST /api/v1/cart/items`: Add item to cart or increment quantity.
 - `PUT /api/v1/cart/items/{productId}`: Update item quantity.
@@ -260,16 +264,19 @@ erDiagram
 - `DELETE /api/v1/cart`: Clear entire cart.
 
 ### Order Processing
+
 - `POST /api/v1/orders`: Place order (initiates Saga via Transactional Outbox).
 - `GET /api/v1/orders/{orderId}`: Get order details and current status.
 - `GET /api/v1/orders/my-orders`: Get paginated customer order history.
 - `PUT /api/v1/orders/{orderId}/cancel`: Cancel pending order.
 
 ### Payments
+
 - `POST /api/v1/payments/process`: Direct payment charge (requires `Idempotency-Key` header).
 - `GET /api/v1/payments/order/{orderId}`: Query transaction by order ID.
 
 ### Notifications & WebSocket
+
 - `GET /api/v1/notifications`: Get notification history.
 - `PUT /api/v1/notifications/{id}/read`: Mark notification as read.
 - `PUT /api/v1/notifications/read-all`: Mark all notifications as read.
@@ -282,32 +289,38 @@ erDiagram
 ## 6. Quickstart & Deployment Guide
 
 ### Prerequisites
+
 - **Java 21**
 - **Maven 3.9+** (or Maven Wrapper `./mvnw`)
 - **Docker & Docker Compose**
 
 ### 1. Configure Environment
+
 ```bash
 cp .env.example .env
 ```
 
 ### 2. Start Middleware Infrastructure
+
 ```bash
 # Launch PostgreSQL (multi-db), Redis, Kafka (KRaft), Kafka UI, Zipkin, Prometheus, and Grafana
 docker compose up -d postgres redis kafka kafka-ui zipkin prometheus grafana
 ```
 
 ### 3. Build Multi-Module Project
+
 ```bash
 mvn clean install
 ```
 
 ### 4. Build and Run Complete Application Stack via Docker
+
 ```bash
 docker compose up --build -d
 ```
 
 ### 5. Access Dashboards
+
 - **API Gateway Entrypoint:** `http://localhost:8080`
 - **Eureka Service Registry:** `http://localhost:8761`
 - **Kafka UI:** `http://localhost:8090`
@@ -320,18 +333,23 @@ docker compose up --build -d
 ## 7. Testing Strategy
 
 ### A. Unit Tests (JUnit 5 & Mockito)
+
 Run unit tests across all microservices:
+
 ```bash
 mvn test
 ```
 
 ### B. End-to-End Integration Tests (Testcontainers)
+
 In `order-service`, the test [OrderWorkflowIntegrationTest.java](file:///A:/Sem%202/files/ShopSphere/order-service/src/test/java/com/shopsphere/order/e2e/OrderWorkflowIntegrationTest.java) spins up real containerized PostgreSQL and Kafka instances to verify the complete Saga workflow:
+
 1. Inserts order and outbox records atomically in PostgreSQL.
 2. Polls and publishes `OrderCreatedEvent` to Kafka.
 3. Simulates payment callback and confirms order status transitions.
 
 To run Testcontainers integration tests:
+
 ```bash
 mvn test -Dtest=OrderWorkflowIntegrationTest
 ```
@@ -341,29 +359,35 @@ mvn test -Dtest=OrderWorkflowIntegrationTest
 ## 8. Senior Java Backend Architect Interview Q&A Deep Dive
 
 ### Q1: What is the Dual-Write Problem, and how did you solve it in ShopSphere?
+
 > **Answer:**  
 > The Dual-Write Problem occurs when a microservice needs to update a database and publish an event to a message broker within the same business operation. If either system fails or times out, the system enters an inconsistent state (Zombie Orders or Phantom Stock).  
 > In ShopSphere, we solve this with the **Transactional Outbox Pattern**: the `Order` entity and an `OrderOutbox` record are written to PostgreSQL inside the **same local ACID transaction (`@Transactional`)**. An asynchronous background worker (`OutboxPublisherService`) polls pending records, sends them to Kafka with `acks=all`, and marks them as `PUBLISHED`. This guarantees **At-Least-Once Delivery** without distributed two-phase commits.
 
 ### Q2: Why use Optimistic Locking over Pessimistic Locking for inventory stock reservation?
+
 > **Answer:**  
 > Under high concurrency (such as flash sales), **Pessimistic Locking** (`SELECT ... FOR UPDATE`) acquires physical row-level locks in the database engine, forcing concurrent threads to block. This quickly exhausts the HikariCP connection pool, causes severe latency spikes, and introduces deadlock risks.  
 > **Optimistic Locking** (`@Version`) avoids database locking entirely. Threads read the record version without blocking. During update, the SQL query executes `UPDATE inventory SET available = ..., version = version + 1 WHERE id = ? AND version = ?`. If another thread committed first, Hibernate throws `ObjectOptimisticLockingFailureException`. Paired with retry policies, this provides far higher throughput and prevents overselling under heavy load.
 
 ### Q3: Why did you choose Choreography-based Saga over Orchestration-based Saga?
+
 > **Answer:**  
 > In Choreography, each microservice consumes domain events and independently decides its business actions and compensations. There is no central orchestrator acting as a single point of failure or throughput bottleneck. For our 4-step workflow (Order $\rightarrow$ Inventory $\rightarrow$ Payment $\rightarrow$ Notification), choreography provides optimal simplicity and high performance.
 
 ### Q4: How is Idempotency guaranteed across asynchronous Kafka consumers?
+
 > **Answer:**  
 > Kafka provides **At-Least-Once Delivery**. Network blips during consumer offset commits can cause messages to be re-delivered.  
 > In ShopSphere, every event envelope carries an immutable `eventId` (UUID). Consumers insert the `eventId` into a `processed_events` table inside the same local database transaction that executes the business logic. If a duplicate arrives, the database unique constraint raises a collision, and the consumer immediately acknowledges the Kafka offset without re-executing the payment or stock deduction.
 
 ### Q5: Why is Redis preferred over PostgreSQL for shopping carts?
+
 > **Answer:**  
 > Over 70% of e-commerce shopping carts are abandoned. Storing carts in a relational disk-based database causes high I/O churn, index fragmentation, and requires scheduled batch cleanup scripts. Redis operates in RAM with sub-millisecond latencies ($< 1\text{ ms}$) and provides native key expiration via `SETEX cart:{userId} 259200`. Idle carts expire naturally after 72 hours with zero operational maintenance.
 
 ### Q6: How does Distributed Tracing correlate logs across synchronous REST and asynchronous Kafka events?
+
 > **Answer:**  
 > Synchronous calls propagate tracing via HTTP headers (`traceparent`, `X-Correlation-Id`) using `FeignCorrelationInterceptor`.  
 > Across asynchronous Kafka queues, **Micrometer Tracing** automatically injects trace context into Kafka's binary **Record Headers**. When the consumer receives the record, it extracts the trace header and resumes the span as a child span of the original trace. This ensures that a single distributed `traceId` ties together the initial API Gateway request, the Order Service database insert, the Kafka event, and the Payment Service execution in Zipkin.
@@ -400,6 +424,7 @@ kubectl apply -f infrastructure/k8s/hpa.yaml
 ## 10. Automated End-to-End Verification & Postman
 
 ### Running the End-to-End Platform Verification Suite
+
 We provide native automated scripts that register a user, authenticate via JWT, create a product, seed inventory, add to cart, trigger the choreographed Saga checkout, and poll until the order reaches `CONFIRMED`:
 
 ```powershell
@@ -412,6 +437,7 @@ chmod +x scripts/verify-platform.sh
 ```
 
 ### Importing Postman Collection
+
 Import `docs/api/shopsphere-postman-collection.json` into Postman. It contains pre-configured requests, environment variables, and auto-token extraction scripts for all 10 microservices.
 
 ---

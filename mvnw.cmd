@@ -26,7 +26,6 @@
 
 set ERROR_CODE=0
 
-@REM To isolate internal variables from possible post scripts, we use another setlocal
 @setlocal
 
 @REM ==== START VALIDATION ====
@@ -68,7 +67,7 @@ powershell -Command "& {[Net.ServicePointManager]::SecurityProtocol = [Net.Secur
 if ERRORLEVEL 1 goto error
 
 :runWrapper
-"%JAVACMD%" %MAVEN_OPTS% -jar %WRAPPER_JAR% %*
+"%JAVACMD%" %MAVEN_OPTS% -classpath %WRAPPER_JAR% "-Dmaven.multiModuleProjectDirectory=%EXEC_DIR%" %WRAPPER_LAUNCHER% %*
 if ERRORLEVEL 1 goto error
 goto end
 

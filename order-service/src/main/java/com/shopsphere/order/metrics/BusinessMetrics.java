@@ -1,11 +1,11 @@
-package com.shopsphere.common.metrics;
+package com.shopsphere.order.metrics;
 
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.stereotype.Component;
 
 /**
- * Helper bean providing custom domain metric meters for Prometheus scraping.
+ * Custom domain metric meters for Prometheus scraping in Order Service.
  */
 @Component
 public class BusinessMetrics {
@@ -30,11 +30,11 @@ public class BusinessMetrics {
                 .register(registry);
 
         this.paymentsFailedCounter = Counter.builder("shopsphere.payments.failed.total")
-                .description("Total number of declined or failed payment transactions")
+                .description("Total number of failed payment authorizations")
                 .register(registry);
 
-        this.stockReservationsCounter = Counter.builder("shopsphere.inventory.reservations.total")
-                .description("Total number of inventory reservations processed")
+        this.stockReservationsCounter = Counter.builder("shopsphere.stock.reservations.total")
+                .description("Total number of successful stock allocations")
                 .register(registry);
     }
 

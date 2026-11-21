@@ -1,4 +1,4 @@
-package com.shopsphere.common.tracing;
+package com.shopsphere.cart.config;
 
 import com.shopsphere.common.security.SecurityConstants;
 import feign.RequestInterceptor;
@@ -28,16 +28,17 @@ public class FeignCorrelationInterceptor implements RequestInterceptor {
             correlationId = request.getHeader(SecurityConstants.HEADER_CORRELATION_ID);
         }
 
-        // 2. Fallback to MDC (Mapped Diagnostic Context)
+        // 2. Fall back to SLF4J MDC context
         if (correlationId == null || correlationId.isBlank()) {
-            correlationId = MDC.get(SecurityConstants.HEADER_CORRELATION_ID);
+            correlationId = MDC.get("correlationId");
         }
 
-        // 3. Fallback to generating a fresh ID
+        // 3. Generate new correlation ID if completely absent
         if (correlationId == null || correlationId.isBlank()) {
             correlationId = UUID.randomUUID().toString();
         }
 
+        // 4. Inject header into outgoing OpenFeign HTTP request
         template.header(SecurityConstants.HEADER_CORRELATION_ID, correlationId);
     }
 }

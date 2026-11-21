@@ -31,9 +31,12 @@ while [ -h "$PRG" ]; do
   fi
 done
 BASE_DIR=`dirname "$PRG"`
+BASE_DIR=`cd "$BASE_DIR" && pwd`
+
 WRAPPER_DIR="$BASE_DIR/.mvn/wrapper"
 WRAPPER_JAR="$WRAPPER_DIR/maven-wrapper.jar"
 WRAPPER_PROPERTIES="$WRAPPER_DIR/maven-wrapper.properties"
+WRAPPER_LAUNCHER="org.apache.maven.wrapper.MavenWrapperMain"
 
 if [ -z "$JAVA_HOME" ] ; then
   JAVACMD=`which java`
@@ -62,4 +65,8 @@ if [ ! -e "$WRAPPER_JAR" ]; then
   fi
 fi
 
-exec "$JAVACMD" $MAVEN_OPTS -jar "$WRAPPER_JAR" "$@"
+exec "$JAVACMD" \
+  $MAVEN_OPTS \
+  -classpath "$WRAPPER_JAR" \
+  "-Dmaven.multiModuleProjectDirectory=$BASE_DIR" \
+  "$WRAPPER_LAUNCHER" "$@"
